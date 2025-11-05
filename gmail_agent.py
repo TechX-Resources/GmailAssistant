@@ -49,11 +49,22 @@ Behavior example:
 5. Use the `Respond` tool to reply to the request.
 
 Rules:
-1. By default set the start time of your email search queries to a week ago, unless told otherwise."""
+1. By default set the start time of your email search queries to a week ago, unless told otherwise.
+2. Ensure you use add_label_to_email when the chatbot tells you to add a label to an email or email to a label.
+3. Provide the chatbot with the email ids of relevant emails."""
 
 
 REQUEST_STATUS = Enum("REQUEST_STATUS", { "FAILURE": "failure", "SUCCESS": "success" })
 
+
+@tool
+@validate_call
+def create_label(
+        label_name: str = Field(..., description="The label name, with spaces replaced by underscores. example: working out -> working_out"),
+        description: str = Field(..., description="The sentence describing the label")
+    ):
+    """Used to create new label categories"""
+    return gmail_tools.create_label(label_name, description)
 
 @tool
 @validate_call
@@ -62,7 +73,8 @@ def add_label_to_email(
         label_name: UserLabelEnum = Field(..., description="The label name.")
     ):
     """Used to add a label to an email"""
-    return gmail_tools.add_email_label(email_id, label_name)
+    return gmail_tools.add_email_label(email_id, label_name.value)
+    
 
 
 @tool
@@ -72,8 +84,15 @@ def remove_label_from_email(
         label_name: UserLabelEnum = Field(..., description="The label name.")
     ):
     """Used to remove a label from an email"""
-    return gmail_tools.remove_email_label(email_id, label_name)
+    return gmail_tools.remove_email_label(email_id, label_name.value)
 
+@tool
+@validate_call
+def get_email_by_id(
+        email_id: str = Field(..., description="id of the email you want to fetch")
+    ):
+    """Retrieve an email by its id"""
+    return json.dumps(gmail_tools.retrieve_email_from_id(email_id))
 
 @tool
 @validate_call
@@ -108,7 +127,7 @@ class Respond(BaseModel):
     information: str = Field(None, description="The information the chatbot requested in detail. Only use if the chatbot requested information and the task ended in success.")
     error_info: str = Field(None, description="A summary of the issues that arose during the task if it ended in failure.")
 
-tools = [add_label_to_email, remove_label_from_email, keyword_query_inbox, semantically_query_inbox]
+tools = [add_label_to_email, remove_label_from_email, keyword_query_inbox, semantically_query_inbox, create_label, get_email_by_id]
 tool_node = ToolNode(tools)
 
 summarizer = ChatGoogleGenerativeAI(model='gemini-2.5-pro')
@@ -140,6 +159,10 @@ def respond(state):
 def route(state):
     messages = state["messages"]
     last_message = messages[-1]
+    if not last_message.tool_calls:
+        state["messages"] = state["messages"] + [SystemMessage(content="You MUST call a tool.")]
+        return "agent"
+    
     if last_message.tool_calls[0]['name'] == "AskQuestion":
         return "ask_question"
     elif last_message.tool_calls[0]['name'] == "Respond":
@@ -154,6 +177,7 @@ def call_agent(state):
 
 
     response = g_agent.invoke(messages)
+    print(response)
     
     return {"messages": messages + [response]}
 
@@ -173,7 +197,7 @@ workflow.add_conditional_edges(
     "agent",
     # Next, we pass in the function that will determine which node is called next.
     route,
-    path_map=["action", "respond", "ask_question"]
+    path_map=["action", "respond", "ask_question", "agent"]
 )
 
 workflow.add_edge("action", "agent")

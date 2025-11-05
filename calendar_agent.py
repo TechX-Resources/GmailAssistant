@@ -154,7 +154,10 @@ def respond(state):
 def route(state):
     messages = state["messages"]
     last_message = messages[-1]
-
+    if not last_message.tool_calls:
+        state["messages"] = state["messages"] + [SystemMessage(content="You MUST call a tool")]
+        return "agent"
+    
     if last_message.tool_calls[0]['name'] == "AskQuestion":
         return "ask_question"
     elif last_message.tool_calls[0]['name'] == "Respond":
@@ -191,7 +194,7 @@ workflow.add_conditional_edges(
     "agent",
     # Next, we pass in the function that will determine which node is called next.
     route,
-    path_map=["action", "respond", "ask_question", "create_task", "create_event"]
+    path_map=["action", "respond", "ask_question", "create_task", "create_event", "agent"]
 )
 
 workflow.add_edge("action", "agent")

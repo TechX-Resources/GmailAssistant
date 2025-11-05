@@ -22,12 +22,23 @@ ids_to_names = { v: k for k, v in map_of_labels.items()}
 user_email = None
 
 
+def load_map_of_labels():
+    global map_of_labels
+    map_of_labels = { label['name']: label['id'] for label in label_descriptors }
+
+def add_label_descriptor(label_name, label_id, description):
+    global label_descriptors
+    label_descriptors.append({
+        "name": label_name,
+        "id": label_id,
+        description: description
+    })
+
 
 
 def check_label_ids():
     response = gmail.users().labels().list(userId='me').execute()
     labels = response.get('labels', [])
-    
     label_set = set([label['name'] for label in labels])
     for k in map_of_labels:
         if k not in label_set:
@@ -41,7 +52,9 @@ def check_label_ids():
 
 
 def add_email_label(email_id: str, label_name: str):
+    
     label_id = map_of_labels[label_name]
+
     try:
         gmail.users().messages().modify(
             userId='me',
@@ -53,7 +66,7 @@ def add_email_label(email_id: str, label_name: str):
     except HttpError as error:
         return json.dumps({
             "status": "failure",
-            "error": error
+            "error": str(error)
         })
     
     return json.dumps({
@@ -81,14 +94,17 @@ def remove_email_label(email_id: str, label_name: str):
             "error": error
         })
     
-    return json.dumps({
-        "status": "success",
-        "result": "removed label from email",
-        "label_name": label_name,
-        "email_id": email_id
-    })
+    try: 
+        return json.dumps({
+            "status": "success",
+            "result": "removed label from email",
+            "label_name": str(label_name),
+            "email_id": email_id
+        })
+    except Exception as e:
+        print(e)
 
-def create_label(label_name: str, color=None):
+def create_label(label_name: str, description:str=None , color=None):
     label_body = {
         "name": label_name,
         "labelListVisibility": "labelShow",     
@@ -110,6 +126,11 @@ def create_label(label_name: str, color=None):
         print(f'An error occurred: {error} label_name: {label_name}')
         return
 
+    if description:
+        add_label_descriptor(label_name, label['id'], description)
+        load_map_of_labels()
+        utils.update_json('config.json', "user_labels", label_descriptors)
+
     return label['id']
 
 def get_backlogged_emails() -> list[Email]:
@@ -122,7 +143,8 @@ def get_backlogged_emails() -> list[Email]:
         
     return []
 
-
+def retrieve_email_from_id(id):
+    return _retrieve_email_from_id(gmail, id)
 def _retrieve_email_from_id(gmail: Resource, id) -> Email:
 
     msg_data = gmail.users().messages().get(userId='me', id=id, format='full').execute()
@@ -162,28 +184,32 @@ def _retrieve_email_from_id(gmail: Resource, id) -> Email:
 def _retrieve_new_emails(worker_gmail: Resource, history_id) -> list[Email]:
     new_emails = []
     page_token = None
-    while True:
-        
-        results = worker_gmail.users().history().list(
-            userId='me',
-            startHistoryId=history_id,
-            historyTypes=['messageAdded'],
-            pageToken=page_token
-        ).execute()
 
-        history = results.get('history', {})
+    try:
+        while True:
+            
+            results = worker_gmail.users().history().list(
+                userId='me',
+                startHistoryId=history_id,
+                historyTypes=['messageAdded'],
+                pageToken=page_token
+            ).execute()
 
-        new_email_ids = []
-        for update in history:
-            for message in update.get('messagesAdded', []):
-                new_email_ids.append(message['message']['id'])
-        
-        for id in new_email_ids:
-            new_emails.append(_retrieve_email_from_id(worker_gmail, id))
+            history = results.get('history', {})
 
-        page_token = results.get('nextPageToken')
-        if not page_token:
-            break
+            new_email_ids = []
+            for update in history:
+                for message in update.get('messagesAdded', []):
+                    new_email_ids.append(message['message']['id'])
+            
+            for id in new_email_ids:
+                new_emails.append(_retrieve_email_from_id(worker_gmail, id))
+
+            page_token = results.get('nextPageToken')
+            if not page_token:
+                break
+    except Exception as e:
+        print(e)
 
     return new_emails
 
@@ -221,14 +247,14 @@ def init_gmail(creds):
 
 def keyword_query_inbox(keywords: str, subject: str = None, start: date = None, end: date = None, 
                 sender: str = None) -> list[Email]:
-    
+    print(keywords)
     subject_query = '' if subject is None else f'subject:{subject} '
     start_query = '' if start is None else f'after:{start.strftime("%Y/%m/%d")} '
     end_query = '' if end is None else f'before:{end.strftime("%Y/%m/%d")} '
     sender_query = '' if sender is None else f'from:{sender} '
-    query = start_query + end_query 
+    query = keywords + " " + subject_query + start_query + end_query  + sender_query
     
-    results = gmail.users().messages().list(userId='me', q=query, maxResults=150).execute()
+    results = gmail.users().messages().list(userId='me', q=query, maxResults=10).execute()
 
     messages = results.get('messages', [])
     msgs = [msg['id'] for msg in messages]

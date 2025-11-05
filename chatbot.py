@@ -4,7 +4,7 @@ import json
 from datetime import date, datetime
 from pydantic import BaseModel, Field, validate_call
 from typing import Optional, TypedDict
-
+import re
 
 
 import google.generativeai as genai
@@ -73,7 +73,9 @@ tool_map = {
 
 def make_email_prompt(inject: str):
     return f"""You are a helpful AI chatbot responsible for accessing a user's Google Calendar and Gmail.
-Your goal is to receive requests from the user and give instructions to the Google Calendar Agent to complete them.
+Your goal is to receive requests from the user and give instructions to the Google Calendar Agent and Gmail Agent to complete them.
+The Gmail Agent handles searching for messages, labeling emails, and creating new emails.
+The Calendar Agent handles scheduling, deleting, and rescheduling events, as well as looking up availability.
 You should think step by step and decide when to use tools to take action. Ensure you reason in every response.
 Respond in this format:
 
@@ -100,6 +102,9 @@ Rules:
 - Give datetimes to the Calendar Agent in RFC 3339 format and give dates to the user in [month name] [day] format with the time specified in AM or PM.
 - NEVER talk to the user in plain text.You may ONLY use the `PromptUser`, `GiveUserInfo`, and `ConfirmRequestCompletion` tools to speak to the user. Use CallCalendarAgent
 - Ensure the user doesn't have any more requests before calling `ConfirmRequestCompletion`.
+
+- When a user asks to create a new email label, ENSURE you ask them what the description should be, and give that information to the Gmail Agent.
+- When a user asks you to add an email to a label category, ENSURE you provide the Gmail Agent with the email's ID and the name of the label they should add it to.
 """
 
 
@@ -127,6 +132,9 @@ def talk_to_user(state):
         if i['name'] == "ConfirmRequestCompletion":
             end = True
         responses.append(ToolMessage(tool_call_id=i['id'], content=resp))
+
+        if re.search(r'label', resp, re.IGNORECASE):
+            responses.append(SystemMessage(content="If users ask to create a label ensure you ask for their label description.\nIf they ask you to add an email to a label, provide the gmail agent with the email id and label name."))
 
     return {"messages": state["messages"] + responses}
 
@@ -176,7 +184,7 @@ def call_calendar_agent(state):
 
 def call_gmail_agent(state):
     call = state["messages"][-1].tool_calls[0]
-
+    print(call)
     agent_args = CallAgent.model_validate(call['args'])
     res = gmail_agent.start_workflow(request=agent_args.model_dump_json(indent=2, exclude={'agent_type'}))
     while res[1]:

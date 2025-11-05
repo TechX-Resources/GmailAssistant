@@ -15,10 +15,14 @@ os.environ["GOOGLE_API_KEY"] = utils.get_json_field('config.json', 'gemini_key')
 
 
 enum_vals = { label['name']: label['name'] for label in gmail_tools.label_descriptors if label['name'] != 'scheduled' }
+enum_vals.update({"irrelevant": "irrelevant"})
+
 label_map = { label['name']: label['description'] for label in gmail_tools.label_descriptors if label['name'] != 'scheduled' }
+label_map.update({ "irrelevant": "Emails that don't have anyting to do with any of these categories." })
 
 UserLabelEnum = Enum("UserLabelEnum", enum_vals)
 
+print(UserLabelEnum)
 
 class UserLabelClassification(BaseModel):
     classification: UserLabelEnum = Field(...,
@@ -34,7 +38,9 @@ def classify(emails: list[Email]):
     
     for e in emails:
         resp = classifier.invoke(make_prompt(e.text))
-        gmail_tools.add_email_label(e, resp.classification.value)
+        if resp.classification.value != "irrelevant":
+            gmail_tools.add_email_label(e, resp.classification.value)
+        
         values.append(resp.classification.value)
 
     return values

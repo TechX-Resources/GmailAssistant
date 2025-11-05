@@ -21,7 +21,6 @@ def process_emails(emails: list[Email]):
     semantics.add_embeddings(emails)
     classifications = classification.classify(emails)
     for i in range(len(emails)):
-        gmail_tools.add_email_label(emails[i].email_id, classifications[i])
         if classifications[i] in agent_relevant_categories:
             agent_relevant_emails.append(emails[i])
 
@@ -56,6 +55,9 @@ while True:
     if end: break
 
     if agent_relevant_emails:
-        chatbot.start_new_email_agent(agent_relevant_emails.pop(0))
+        for event in chatbot.start_new_email_agent(agent_relevant_emails.pop(0)):
+            pass
     else:
-        chatbot.start_new_conversation_agent()
+
+        for event in chatbot.start_new_conversation_agent():
+            pass
