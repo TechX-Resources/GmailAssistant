@@ -1,5 +1,22 @@
 ## Gmail Assistant
 
+This project implements agentic use of Large Language Models, semantic embedding databases, and KNN to create a proactive gmail and calendar chatbot that notifies the user of events and incoming emails. It consists of 3 agents: the `chatbot` whose purpose is to talk to the user and relay tasks to the other agents, the `gmail_agent` whose purpose is to search for emails and manage email labeling, and the `calendar_agent` that manages the user's google calendar.
+
+### Features
+1. Can preprocess and vectorize large volumes of emails in minutes. Process is fully automated and the database can be queried against after running `generate_semantic_index` for your desired time interval
+2. Can query against the database using linear search. Accuracy of search results is often higher than with the keyword search Gmail natively supports
+3. Fully functional chatbot. Implemented an end-to-end langgraph chatbot interface with tool routing to increase accuracy
+4. Calendar management. The calendar agent has access to your calendar and can create, reschedule, and cancel events and tasks. Can also attach reminders to tasks that will email or notify you of the task at a designated time.
+5. Gmail management. The gmail agent has access to your gmail inbox and can search for messages by keyword or through semantic meaning via the vector database. Can also manage labels attached to emails.
+
+### Previews
+<img width="600" height="380" alt="Screenshot 2025-10-01 at 1 04 32 AM" src="https://github.com/user-attachments/assets/a41d4cae-0494-4501-a26e-5cea76a240fa" /><img width="300" height="300" alt="Screenshot 2025-10-01 at 10 34 35 PM" src="https://github.com/user-attachments/assets/634cc272-1202-4d58-bfd0-ed54620b551a" />
+
+
+<img width="600" height="285" alt="Screenshot 2025-10-01 at 7 49 17 PM" src="https://github.com/user-attachments/assets/818eca47-96f7-4046-996a-46e6c377e151" /><img width="300" height="175" alt="Screenshot 2025-10-01 at 7 50 11 PM" src="https://github.com/user-attachments/assets/8eba2cfe-e4d3-42d6-9ffa-6d39dca2fe2a" />
+
+
+
 ### Problems to Solve
 1. Gmail inboxes don't have categories for emails that might require a reply or action, and sometimes you may forget to reply to an email or perform an action specified in an email.
 2. Many Gmail inboxes aren't checked for long periods of times, or receive large volumes of emails in short amounts of times that are difficult to navigate.
@@ -25,10 +42,11 @@ The user will be able to ask information that might be contained in the inbox si
 The assistant will also be connected to the user's google calendar and will be able to check availability. The user will be able to ask for their availability, and if there are possible conflicts the assistant will list them. The assistant will also be able to create and delete events on user request.
 
 ### Implementation
-#### Tech Stack
+#### Tech Stack/ Modules Needed
 1. Google API services and authorization - To handle logging into services and retrieving emails and google calendar evemts.
 2. Google Gemini LLM - To handle tasks such as creating labels, filters, and summarizing text.
-3. LangChain - To handle the thinking aspects of the assistant, i.e. figuring out which functions to call based on user request.
+3. LangChain and LangGraph - To handle the thinking aspects of the assistant, i.e. figuring out which functions to call based on user request.
+4. Pydantic - For JSON validation of event objects and descriptions of tool arguments.
 
 #### Labeling Implementation Steps
 1. Create a gmail tools module that contains functions that can retrieve emails from google APIs and organize them into Email objects.

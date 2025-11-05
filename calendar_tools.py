@@ -1,12 +1,9 @@
-import os.path
 import base64
 import re
 import threading
 import time
 import json
 
-from pathlib import Path
-from typing import Union, Callable
 from datetime import date, datetime
 from urllib.parse import urlparse
 from dateutil import parser
@@ -14,10 +11,8 @@ from pydantic import BaseModel
 
 import pytz
 import iso8601
+import utils
 
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build, Resource
 from googleapiclient.errors import HttpError
 from data_schemas import CreateTask, CreateEvent
@@ -27,11 +22,6 @@ g_tasks = None
 default_tasklist = None
 time_zone = None
 today = None
-
-SCOPES = ["https://www.googleapis.com/auth/gmail.modify",
-        "https://www.googleapis.com/auth/calendar",
-        "https://www.googleapis.com/auth/tasks"]
-
 
 def init_tasks(creds):
     global g_tasks, default_tasklist
@@ -44,7 +34,7 @@ def init_calendar(creds):
     g_cal = build('calendar', 'v3', credentials=creds)
     tz = g_cal.calendarList().get(calendarId='primary').execute()
     time_zone = pytz.timezone(tz['timeZone'])
-    today = datetime.now(time_zone).date()
+    today = datetime.now(time_zone)
 
 
 def add_task(t: CreateTask) -> str:
@@ -56,9 +46,14 @@ def add_task(t: CreateTask) -> str:
             body=t.model_dump(mode='json', exclude_none=True)
         ).execute()
     except HttpError as error:
-        return f"An error occurred creating the task: {error}"
+        return json.dumps({"status": "failure", "result": "failed to create task", "error": error})
 
-    return f"Task created with ID: '{task_result['id']}'"
+    return json.dumps({
+        "status": "success",
+        "result": "created task",
+        "task_id": task_result['id'],
+        "due": t.due.isoformat(),
+    }, indent=2)
 
 def reschedule_task(task_id: str, due: datetime) -> str:
     global g_tasks
@@ -72,10 +67,14 @@ def reschedule_task(task_id: str, due: datetime) -> str:
             }
         ).execute()
     except HttpError as error:
-        return f"An error occurred rescheduling the task: {error}"
+        return json.dumps({"status": "failure", "result": "failed to reschedule task", "error": error})
 
-    return f"Task with ID '{task_id}' updated to be due at {due.isoformat()}."
-
+    return json.dumps({
+        "status": "success",
+        "result": "updated task time",
+        "task_id": task_id,
+        "new_due": due.isoformat()
+    }, indent=2)
 
 def remove_task(task_id: str) -> str:
     global g_tasks
@@ -86,9 +85,9 @@ def remove_task(task_id: str) -> str:
             task=task_id
         ).execute()
     except HttpError as error:
-        return f"An error occurred removing the task: {error}"
+        return json.dumps({"status": "failure", "result": "failed to remove task", "error": error})
 
-    return f"Task with ID '{task_id}' deleted."
+    return json.dumps({"status": "success","result": "removed task", "id_of_task_removed": task_id}, indent=2)
 
 
 def add_event(e: CreateEvent) -> str:
@@ -100,9 +99,19 @@ def add_event(e: CreateEvent) -> str:
             body=e.model_dump(mode='json', exclude_none=True)
         ).execute()
     except HttpError as error:
-        return f"An error occurred creating the event: {error}"
+        return json.dumps({
+            "status": "failure",
+            "result": "failed to add event",
+            "error": error
+        }, indent=2)
 
-    return f"Event created with ID: '{event_result['id']}'."
+    return json.dumps({
+        "status": "success",
+        "result": "created event",
+        "event_id": event_result['id'],
+        "start": e.start.dateTime.isoformat(),
+        "end": e.end.dateTime.isoformat(),
+    }, indent=2)
 
 def reschedule_event(event_id: str, start: datetime, end: datetime) -> str:
     global g_cal
@@ -121,9 +130,16 @@ def reschedule_event(event_id: str, start: datetime, end: datetime) -> str:
             }
         ).execute()
     except HttpError as error:
-        return f"An error occurred rescheduling the event: {error}"
+        return json.dumps({"status": "failure", "result": "failed to reschedule event", "error": error})
 
-    return f"Event with ID '{event_id}' updated to start at {start.isoformat()} and end at {end.isoformat()}."
+    return json.dumps({
+        "status": "success",
+        "result": "updated event time",
+        "event_id": event_id,
+        "new_start": start.isoformat(),
+        "new_end": end.isoformat()
+    }, indent=2)
+
 
 def remove_event(event_id: str):
     global g_cal
@@ -134,16 +150,16 @@ def remove_event(event_id: str):
             eventId=event_id
         ).execute()
     except HttpError as error:
-        return f"An error occurred removing the event: {error}"
+        return json.dumps({"status": "failure", "result": "failed to remove event", "error": error})
 
-    return f"Event with ID '{event_id}' deleted."
+    return json.dumps({"status": "success","result": "removed event", "id_of_event_removed": event_id}, indent=2)
 
 
 
 def is_naive(dt: datetime):
     return dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None
 
-def get_events_in_range(start: datetime, end: datetime) -> str:
+def get_events_in_range(start: datetime, end: datetime) -> list:
     global g_cal
 
     try:
@@ -154,7 +170,8 @@ def get_events_in_range(start: datetime, end: datetime) -> str:
             orderBy='startTime'
         ).execute()
     except HttpError as error:
-        return f"An error occurred retrieving events: {error}"
+        print(error)
+        return [error]
 
     events = events_result.get('items', [])
 
@@ -178,16 +195,16 @@ def get_events_in_range(start: datetime, end: datetime) -> str:
         cleaned_data = {k: v for k, v in data.items() if v is not None}
         event_list.append(cleaned_data)
 
-    return "JSON list of events in this range:\n" + json.dumps(event_list, indent=2) + "\n"
+    return event_list
 
 
-def get_tasks_in_range(start: datetime, end: datetime) -> str:
+def get_tasks_in_range(start: datetime, end: datetime) -> list:
     global g_tasks
 
     try:
         results = g_tasks.tasklists().list(maxResults=10).execute()
     except HttpError as error:
-        return f'An error occurred retrieving tasks: {error}'
+        return [error]
     tasklists = results.get('items', [])
 
     tasks_in_range = []
@@ -200,7 +217,7 @@ def get_tasks_in_range(start: datetime, end: datetime) -> str:
                 maxResults=10
             ).execute()
         except HttpError as error:
-            return f'An error occurred retrieving tasks: {error}'
+            return [error]
 
         items = tasks_results.get('items', [])
         
@@ -212,33 +229,9 @@ def get_tasks_in_range(start: datetime, end: datetime) -> str:
             if start <= due_time <= end:
                 tasks_in_range.append(task)
 
-    return "JSON list of tasks in this range:\n" + json.dumps(tasks_in_range, indent=4) + "\n"
+    return tasks_in_range
 
-def get_creds(creds_dir: Union[Path, str], scopes: list[str]):
-    creds = None
 
-    creds_json = os.path.join(creds_dir, "credentials.json")
-    token_json = os.path.join(creds_dir, "token.json")
-
-    if os.path.exists(token_json):
-        creds = Credentials.from_authorized_user_file(token_json, scopes)
-    
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                creds_json, scopes
-            )
-
-            creds = flow.run_local_server(port=0)
-
-        with open(token_json, "w") as token:
-            token.write(creds.to_json())
-
-    return creds
-
-creds = get_creds("ArthurCreds", SCOPES)
-init_calendar(creds)
-init_tasks(creds)
+init_calendar(utils.creds)
+init_tasks(utils.creds)
 

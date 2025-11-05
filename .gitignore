@@ -1,2 +1,8 @@
-*Creds
+json_dir
 __pycache__
+google-cloud-sdk
+.vscode
+.DS_Store
+*.code-workspace
+*.faiss
+data
