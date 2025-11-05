@@ -1,14 +1,20 @@
 ## Gmail Assistant
 
-### Module Descriptions
-1. `data_schemas.py` - BaseModel definitions for events, tasks, etc.
-2. `calendar_agent.py` - Contains the workflow and tooling for the agent that manages the user's calendar.
-3. `chatbot.py` - Contains the workflow for a chatbot that communicates with the user and gives requests to the two different agents.
-4. `classification.py` - Contains logic for classifying emails into the user's labels.
-5. `semantics.py` - Contains logic for embedding email meaning and querying those embeddings for the closest match. Supports index saving and loading.
-6. `workflow.py` - Will soon contain the entire workflow for handling incoming emails
-7. `utils.py` - Miscellaneous functions
-8. `agent.py` - deprecated
+This project implements agentic use of Large Language Models, semantic embedding databases, and KNN to create a proactive gmail and calendar chatbot that notifies the user of events and incoming emails. It consists of 3 agents: the `chatbot` whose purpose is to talk to the user and relay tasks to the other agents, the `gmail_agent` whose purpose is to search for emails and manage email labeling, and the `calendar_agent` that manages the user's google calendar.
+
+### Features
+1. Can preprocess and vectorize large volumes of emails in minutes. Process is fully automated and the database can be queried against after running `generate_semantic_index` for your desired time interval
+2. Can query against the database using linear search. Accuracy of search results is often higher than with the keyword search Gmail natively supports
+3. Fully functional chatbot. Implemented an end-to-end langgraph chatbot interface with tool routing to increase accuracy
+4. Calendar management. The calendar agent has access to your calendar and can create, reschedule, and cancel events and tasks. Can also attach reminders to tasks that will email or notify you of the task at a designated time.
+5. Gmail management. The gmail agent has access to your gmail inbox and can search for messages by keyword or through semantic meaning via the vector database. Can also manage labels attached to emails.
+
+### Previews
+<img width="600" height="380" alt="Screenshot 2025-10-01 at 1 04 32 AM" src="https://github.com/user-attachments/assets/a41d4cae-0494-4501-a26e-5cea76a240fa" /><img width="300" height="300" alt="Screenshot 2025-10-01 at 10 34 35 PM" src="https://github.com/user-attachments/assets/634cc272-1202-4d58-bfd0-ed54620b551a" />
+
+
+<img width="600" height="285" alt="Screenshot 2025-10-01 at 7 49 17 PM" src="https://github.com/user-attachments/assets/818eca47-96f7-4046-996a-46e6c377e151" /><img width="300" height="175" alt="Screenshot 2025-10-01 at 7 50 11 PM" src="https://github.com/user-attachments/assets/8eba2cfe-e4d3-42d6-9ffa-6d39dca2fe2a" />
+
 
 
 ### Problems to Solve
